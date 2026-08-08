@@ -1,0 +1,1 @@
+{"pth_path": "assets/weights/TT_e200.pth", "index_path": "assets/indices/TT.index", "sg_hostapi": "ALSA", "sg_wasapi_exclusive": false, "sg_input_device": "default", "sg_output_device": "default", "sr_type": "sr_model", "threhold": -60.0, "pitch": 0.0, "rms_mix_rate": 0.0, "index_rate": 0.0, "block_time": 0.25, "crossfade_length": 0.05, "extra_time": 2.5, "f0method": "rmvpe"}
