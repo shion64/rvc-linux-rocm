@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RVC Voice Changer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent: #e94560;
+    --accent2: #533483;
+    --text: #eaeaea;
+    --text-dim: #8892a4;
+    --green: #4caf50;
+    --yellow: #ffc107;
+    --border: rgba(255,255,255,0.08);
+    --radius: 8px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', 'Noto Sans JP', sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+    padding: 16px;
+  }
+
+  h1 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--accent);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  h1 span.dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    display: inline-block;
+    transition: background 0.3s;
+  }
+  h1 span.dot.active { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+  .stats-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 14px;
+    display: flex;
+    gap: 20px;
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .stats-bar .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stats-bar .stat-val { font-size: 18px; font-weight: 700; color: var(--accent); }
+  .stats-bar .stat-val.ok { color: var(--green); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 14px;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+  }
+
+  .panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .form-group { margin-bottom: 12px; }
+  .form-group label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
+
+  select, input[type="text"], input[type="number"] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    padding: 6px 10px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  select:focus, input:focus { border-color: var(--accent2); }
+
+  .slider-row {
+    display: grid;
+    grid-template-columns: 1fr 60px;
+    gap: 8px;
+    align-items: center;
+  }
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+    height: 4px;
+    cursor: pointer;
+  }
+  input[type="number"] {
+    padding: 4px 6px;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  .radio-group {
+    display: flex;
+    gap: 12px;
+  }
+  .radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text);
+  }
+  input[type="radio"] { accent-color: var(--accent); }
+
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .checkbox-row label { font-size: 13px; color: var(--text); cursor: pointer; }
+  input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; }
+
+  .btn {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 5px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .btn-start {
+    background: var(--green);
+    color: #fff;
+  }
+  .btn-start:hover { background: #43a047; }
+  .btn-stop {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-stop:hover { background: #c0392b; }
+  .btn-sm {
+    padding: 5px 12px;
+    font-size: 12px;
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-sm:hover { background: var(--accent2); }
+
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+
+  .monitor-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .toggle-switch {
+    position: relative;
+    width: 40px;
+    height: 20px;
+  }
+  .toggle-switch input { display: none; }
+  .toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: #444;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background 0.3s;
+  }
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 16px; height: 16px;
+    left: 2px; top: 2px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.3s;
+  }
+  .toggle-switch input:checked + .toggle-slider { background: var(--green); }
+  .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+  .section { margin-bottom: 16px; }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 12px 0;
+  }
+
+  .error-msg {
+    background: rgba(233,69,96,0.15);
+    border: 1px solid var(--accent);
+    border-radius: 5px;
+    padding: 8px 12px;
+    color: var(--accent);
+    font-size: 12px;
+    display: none;
+    margin-top: 10px;
+  }
+
+  @media (max-width: 700px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>
+  <span class="dot" id="status-dot"></span>
+  RVC VOICE CHANGER
+</h1>
+
+<div class="stats-bar">
+  <div class="stat">
+    <span class="stat-val" id="stat-latency">0</span>
+    <span>LATENCY (ms)</span>
+  </div>
+  <div class="stat">
+    <span class="stat-val ok" id="stat-inference">0</span>
+    <span>INFERENCE (ms)</span>
+  </div>
+  <div class="stat">
+    <span class="stat-val" id="stat-sola">0</span>
+    <span>SOLA OFFSET</span>
+  </div>
+</div>
+
+<div class="grid">
+  <!-- 左パネル: モデル・デバイス -->
+  <div>
+    <div class="panel">
+      <div class="panel-title">モデル</div>
+
+      <div class="form-group">
+        <label>音声モデル (.pth)</label>
+        <select id="pth_path" onchange="onModelChange()"></select>
+      </div>
+
+      <div class="form-group">
+        <label>インデックス (.index)</label>
+        <select id="index_path"></select>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-sm" onclick="refreshModels()">🔄 更新</button>
+        <button class="btn btn-sm" onclick="savePreset()">💾 プリセット保存</button>
+      </div>
+    </div>
+
+    <br>
+
+    <div class="panel">
+      <div class="panel-title">オーディオデバイス</div>
+
+      <div class="form-group">
+        <label>ホストAPI</label>
+        <select id="sg_hostapi" onchange="refreshDevices()"></select>
+      </div>
+
+      <div class="form-group">
+        <label>入力デバイス</label>
+        <select id="sg_input_device"></select>
+      </div>
+
+      <div class="form-group">
+        <label>出力デバイス</label>
+        <select id="sg_output_device"></select>
+      </div>
+
+      <div class="form-group">
+        <label>サンプルレート</label>
+        <div class="radio-group">
+          <label><input type="radio" name="sr_type" value="sr_model" checked> モデル</label>
+          <label><input type="radio" name="sr_type" value="sr_device"> デバイス</label>
+        </div>
+      </div>
+
+      <div class="monitor-toggle">
+        <label class="toggle-switch">
+          <input type="checkbox" id="monitor_toggle" onchange="toggleMonitor()">
+          <span class="toggle-slider"></span>
+        </label>
+        <label for="monitor_toggle" style="font-size:13px">モニター有効</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右パネル: パラメーター -->
+  <div>
+    <div class="panel">
+      <div class="panel-title">一般設定</div>
+
+      <div class="section">
+        <div class="form-group">
+          <label>音程設定 (半音)</label>
+          <div class="slider-row">
+            <input type="range" id="pitch" min="-16" max="16" step="1" value="12" oninput="syncInput('pitch')">
+            <input type="number" id="pitch_input" min="-16" max="16" step="1" value="12" oninput="syncSlider('pitch')">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>性別係数 / 声質の太さ</label>
+          <div class="slider-row">
+            <input type="range" id="formant" min="-2" max="2" step="0.05" value="0" oninput="syncInput('formant')">
+            <input type="number" id="formant_input" min="-2" max="2" step="0.05" value="0" oninput="syncSlider('formant')">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>反応閾値 (dB)</label>
+          <div class="slider-row">
+            <input type="range" id="threhold" min="-60" max="0" step="1" value="-60" oninput="syncInput('threhold')">
+            <input type="number" id="threhold_input" min="-60" max="0" step="1" value="-60" oninput="syncSlider('threhold')">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Index Rate</label>
+          <div class="slider-row">
+            <input type="range" id="index_rate" min="0" max="1" step="0.01" value="0.4" oninput="syncInput('index_rate')">
+            <input type="number" id="index_rate_input" min="0" max="1" step="0.01" value="0.4" oninput="syncSlider('index_rate')">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>ラウドネス係数</label>
+          <div class="slider-row">
+            <input type="range" id="rms_mix_rate" min="0" max="1" step="0.01" value="0.4" oninput="syncInput('rms_mix_rate')">
+            <input type="number" id="rms_mix_rate_input" min="0" max="1" step="0.01" value="0.4" oninput="syncSlider('rms_mix_rate')">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>ピッチ方式</label>
+          <div class="radio-group">
+            <label><input type="radio" name="f0method" value="pm"> pm</label>
+            <label><input type="radio" name="f0method" value="rmvpe" checked> rmvpe</label>
+            <label><input type="radio" name="f0method" value="fcpe"> fcpe</label>
+          </div>
+        </div>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="I_noise_reduce">
+          <label for="I_noise_reduce">入力ノイズの低減</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="O_noise_reduce">
+          <label for="O_noise_reduce">出力ノイズの低減</label>
+        </div>
+      </div>
+
+      <hr class="divider">
+      <div class="panel-title">パフォーマンス設定</div>
+
+      <div class="section">
+        <div class="form-group">
+          <label>サンプル長 (s)</label>
+          <div class="slider-row">
+            <input type="range" id="block_time" min="0.02" max="1.5" step="0.01" value="0.13" oninput="syncInput('block_time')">
+            <input type="number" id="block_time_input" min="0.02" max="1.5" step="0.01" value="0.13" oninput="syncSlider('block_time')">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>フェードイン/アウト長 (s)</label>
+          <div class="slider-row">
+            <input type="range" id="crossfade_length" min="0.01" max="0.15" step="0.01" value="0.08" oninput="syncInput('crossfade_length')">
+            <input type="number" id="crossfade_length_input" min="0.01" max="0.15" step="0.01" value="0.08" oninput="syncSlider('crossfade_length')">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>追加推論時間 (s)</label>
+          <div class="slider-row">
+            <input type="range" id="extra_time" min="0.05" max="5.0" step="0.01" value="2.0" oninput="syncInput('extra_time')">
+            <input type="number" id="extra_time_input" min="0.05" max="5.0" step="0.01" value="2.0" oninput="syncSlider('extra_time')">
+          </div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-start" id="btn-start" onclick="startVC()">▶ 音声変換を開始</button>
+        <button class="btn btn-stop" id="btn-stop" onclick="stopVC()" disabled>■ 停止</button>
+      </div>
+
+      <div class="error-msg" id="error-msg"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const socket = io();
+let isRunning = false;
+
+// Socket.IOイベント
+socket.on("stats", (data) => {
+  document.getElementById("stat-latency").textContent = data.latency;
+  document.getElementById("stat-inference").textContent = data.inference_time;
+  document.getElementById("stat-sola").textContent = data.sola_offset;
+});
+
+socket.on("status", (data) => {
+  setRunning(data.running);
+});
+
+socket.on("error", (data) => {
+  showError(data.message);
+});
+
+// スライダーとInputの連動
+function syncInput(key) {
+  const slider = document.getElementById(key);
+  const input = document.getElementById(key + "_input");
+  input.value = slider.value;
+  // リアルタイムパラメーター更新
+  if (isRunning && ["pitch", "formant", "index_rate", "threhold", "rms_mix_rate"].includes(key)) {
+    socket.emit("update_param", { key, value: slider.value });
+  }
+}
+
+function syncSlider(key) {
+  const input = document.getElementById(key + "_input");
+  const slider = document.getElementById(key);
+  const val = parseFloat(input.value);
+  const min = parseFloat(slider.min);
+  const max = parseFloat(slider.max);
+  if (!isNaN(val) && val >= min && val <= max) {
+    slider.value = val;
+    if (isRunning && ["pitch", "formant", "index_rate", "threhold", "rms_mix_rate"].includes(key)) {
+      socket.emit("update_param", { key, value: val });
+    }
+  }
+}
+
+// デバイス・モデル読み込み
+async function refreshDevices() {
+  const hostapi = document.getElementById("sg_hostapi").value;
+  const res = await fetch(`/api/devices?hostapi=${encodeURIComponent(hostapi)}`);
+  const data = await res.json();
+
+  // ホストAPIリスト更新
+  fillSelect("sg_hostapi", data.hostapis, hostapi);
+  fillSelect("sg_input_device", data.input_devices);
+  fillSelect("sg_output_device", data.output_devices);
+}
+
+async function refreshModels() {
+  const res = await fetch("/api/models");
+  const data = await res.json();
+  const currentPth = document.getElementById("pth_path").value;
+  fillSelect("pth_path", data.models.map(m => `assets/weights/${m}`), currentPth);
+  fillSelect("index_path", [""].concat(data.indices.map(i => `assets/indices/${i}`)));
+}
+
+function fillSelect(id, options, selected = null) {
+  const el = document.getElementById(id);
+  const prev = selected || el.value;
+  el.innerHTML = options.map(o => `<option value="${o}"${o === prev ? " selected" : ""}>${o.split("/").pop()}</option>`).join("");
+}
+
+async function onModelChange() {
+  const pth = document.getElementById("pth_path").value;
+  const modelName = pth.split("/").pop().replace(".pth", "");
+  const res = await fetch(`/api/preset/${modelName}`);
+  const preset = await res.json();
+  if (preset && Object.keys(preset).length > 0) {
+    applyPreset(preset);
+  }
+}
+
+function applyPreset(preset) {
+  const keys = ["pitch", "formant", "index_rate", "rms_mix_rate", "threhold", "block_time", "crossfade_length", "extra_time"];
+  keys.forEach(k => {
+    const el = document.getElementById(k);
+    const inp = document.getElementById(k + "_input");
+    if (el && preset[k] !== undefined) { el.value = preset[k]; }
+    if (inp && preset[k] !== undefined) { inp.value = preset[k]; }
+  });
+  if (preset.index_path) {
+    const sel = document.getElementById("index_path");
+    if ([...sel.options].some(o => o.value === preset.index_path)) {
+      sel.value = preset.index_path;
+    }
+  }
+  if (preset.f0method) {
+    document.querySelector(`input[name="f0method"][value="${preset.f0method}"]`).checked = true;
+  }
+}
+
+async function savePreset() {
+  const pth = document.getElementById("pth_path").value;
+  const modelName = pth.split("/").pop().replace(".pth", "");
+  const preset = getValues();
+  await fetch(`/api/preset/${modelName}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(preset),
+  });
+  alert(`プリセット保存完了: ${modelName}`);
+}
+
+function getValues() {
+  return {
+    pth_path: document.getElementById("pth_path").value,
+    index_path: document.getElementById("index_path").value,
+    sg_hostapi: document.getElementById("sg_hostapi").value,
+    sg_input_device: document.getElementById("sg_input_device").value,
+    sg_output_device: document.getElementById("sg_output_device").value,
+    sr_type: document.querySelector('input[name="sr_type"]:checked').value,
+    pitch: document.getElementById("pitch").value,
+    formant: document.getElementById("formant").value,
+    threhold: document.getElementById("threhold").value,
+    index_rate: document.getElementById("index_rate").value,
+    rms_mix_rate: document.getElementById("rms_mix_rate").value,
+    block_time: document.getElementById("block_time").value,
+    crossfade_length: document.getElementById("crossfade_length").value,
+    extra_time: document.getElementById("extra_time").value,
+    f0method: document.querySelector('input[name="f0method"]:checked').value,
+    I_noise_reduce: document.getElementById("I_noise_reduce").checked,
+    O_noise_reduce: document.getElementById("O_noise_reduce").checked,
+  };
+}
+
+function startVC() {
+  hideError();
+  socket.emit("start", getValues());
+}
+
+function stopVC() {
+  socket.emit("stop");
+}
+
+function setRunning(running) {
+  isRunning = running;
+  document.getElementById("btn-start").disabled = running;
+  document.getElementById("btn-stop").disabled = !running;
+  document.getElementById("status-dot").classList.toggle("active", running);
+}
+
+function toggleMonitor() {
+  const on = document.getElementById("monitor_toggle").checked;
+  const line1 = "alsa_output.usb-ARTURIA_MiniFuse_1_8831400925390353-00.HiFi__Line1__sink";
+  if (on) {
+    fetch(`/api/monitor?action=enable&sink=${encodeURIComponent(line1)}`);
+  } else {
+    fetch(`/api/monitor?action=disable&sink=${encodeURIComponent(line1)}`);
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById("error-msg");
+  el.textContent = msg;
+  el.style.display = "block";
+}
+
+function hideError() {
+  document.getElementById("error-msg").style.display = "none";
+}
+
+// 初期化
+async function init() {
+  // デバイス読み込み
+  const dres = await fetch("/api/devices");
+  const devices = await dres.json();
+  fillSelect("sg_hostapi", devices.hostapis);
+  fillSelect("sg_input_device", devices.input_devices);
+  fillSelect("sg_output_device", devices.output_devices);
+
+  // モデル読み込み
+  await refreshModels();
+
+  // 保存設定読み込み
+  const cres = await fetch("/api/config");
+  const config = await cres.json();
+  if (config && Object.keys(config).length > 0) {
+    if (config.pth_path) document.getElementById("pth_path").value = config.pth_path;
+    if (config.index_path) document.getElementById("index_path").value = config.index_path;
+    if (config.sg_input_device) {
+      const sel = document.getElementById("sg_input_device");
+      if ([...sel.options].some(o => o.value === config.sg_input_device)) sel.value = config.sg_input_device;
+    }
+    if (config.sg_output_device) {
+      const sel = document.getElementById("sg_output_device");
+      if ([...sel.options].some(o => o.value === config.sg_output_device)) sel.value = config.sg_output_device;
+    }
+    if (config.sr_type) {
+      const radio = document.querySelector(`input[name="sr_type"][value="${config.sr_type}"]`);
+      if (radio) radio.checked = true;
+    }
+    const numFields = ["pitch", "formant", "threhold", "index_rate", "rms_mix_rate", "block_time", "crossfade_length", "extra_time"];
+    numFields.forEach(k => {
+      const key = k === "crossfade_length" ? "crossfade_length" : k;
+      const val = config[key] ?? config[k];
+      if (val !== undefined) {
+        const el = document.getElementById(k);
+        const inp = document.getElementById(k + "_input");
+        if (el) el.value = val;
+        if (inp) inp.value = val;
+      }
+    });
+    if (config.f0method) {
+      const radio = document.querySelector(`input[name="f0method"][value="${config.f0method}"]`);
+      if (radio) radio.checked = true;
+    }
+  }
+}
+
+init();
+</script>
+</body>
+</html>
