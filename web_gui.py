@@ -387,7 +387,7 @@ def handle_start(data):
         return
     try:
         threading.Thread(target=vc.start_vc, args=(data,), daemon=True).start()
-        emit("status", {"running": True})
+        emit("status", {"running": True, "auto_monitor": data.get("auto_monitor", False)})
         # 設定保存
         config = {
             "pth_path": data["pth_path"],
@@ -437,6 +437,48 @@ def handle_update_param(data):
         elif key == "rms_mix_rate":
             vc.gui_config.rms_mix_rate = float(value)
 
+
+
+
+@app.route("/api/model_info")
+def get_model_info():
+    pth_path = request.args.get("pth", "")
+    result = {"samplerate": None, "has_image": False}
+    if pth_path and os.path.exists(pth_path):
+        try:
+            import torch
+            cpt = torch.load(pth_path, map_location="cpu", weights_only=False)
+            sr = cpt.get("sr", None)
+            result["samplerate"] = str(sr) if sr else None
+        except Exception:
+            pass
+        img_path = pth_path.replace(".pth", ".png")
+        result["has_image"] = os.path.exists(img_path)
+    return jsonify(result)
+
+
+@app.route("/api/model_image")
+def get_model_image():
+    from flask import send_file
+    pth_path = request.args.get("pth", "")
+    img_path = pth_path.replace(".pth", ".png")
+    if os.path.exists(img_path):
+        return send_file(img_path, mimetype="image/png")
+    return "", 404
+
+
+
+@app.route("/api/model_image_upload", methods=["POST"])
+def upload_model_image():
+    from flask import request
+    import shutil
+    pth = request.form.get("pth", "")
+    file = request.files.get("image")
+    if not pth or not file:
+        return jsonify({"status": "error"}), 400
+    img_path = pth.replace(".pth", ".png")
+    file.save(img_path)
+    return jsonify({"status": "ok"})
 
 @app.route("/api/monitor")
 def monitor_route():
